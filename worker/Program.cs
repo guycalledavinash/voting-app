@@ -16,14 +16,13 @@ namespace Worker
         {
             try
             {
-                var pgsql = OpenDbConnection("Server=db;Username=postgres;Password=postgres;");
-                var redisConn = OpenRedisConnection("redis");
+                var pgsql = OpenDbConnection(GetEnv("POSTGRES_CONNECTION_STRING", "Server=db;Username=postgres;Password=postgres;"));
+                var redisConn = OpenRedisConnection(GetEnv("REDIS_HOST", "redis"));
                 var redis = redisConn.GetDatabase();
 
                 // Keep alive is not implemented in Npgsql yet. This workaround was recommended:
                 // https://github.com/npgsql/npgsql/issues/1214#issuecomment-235828359
-                var keepAliveCommand = pgsql.CreateCommand();
-                keepAliveCommand.CommandText = "SELECT 1";
+                // Keep-alive commands are created from the current connection as needed.
 
                 var definition = new { vote = "", voter_id = "" };
                 while (true)
@@ -34,28 +33,32 @@ namespace Worker
                     // Reconnect redis if down
                     if (redisConn == null || !redisConn.IsConnected) {
                         Console.WriteLine("Reconnecting Redis");
-                        redisConn = OpenRedisConnection("redis");
+                        redisConn = OpenRedisConnection(GetEnv("REDIS_HOST", "redis"));
                         redis = redisConn.GetDatabase();
                     }
                     string json = redis.ListLeftPopAsync("votes").Result;
                     if (json != null)
                     {
                         var vote = JsonConvert.DeserializeAnonymousType(json, definition);
+                        if (!IsValidVote(vote.vote))
+                        {
+                            Console.WriteLine($"Skipping invalid vote '{vote.vote}' by '{vote.voter_id}'");
+                            continue;
+                        }
+
                         Console.WriteLine($"Processing vote for '{vote.vote}' by '{vote.voter_id}'");
                         // Reconnect DB if down
                         if (!pgsql.State.Equals(System.Data.ConnectionState.Open))
                         {
                             Console.WriteLine("Reconnecting DB");
-                            pgsql = OpenDbConnection("Server=db;Username=postgres;Password=postgres;");
+                            pgsql = OpenDbConnection(GetEnv("POSTGRES_CONNECTION_STRING", "Server=db;Username=postgres;Password=postgres;"));
                         }
-                        else
-                        { // Normal +1 vote requested
-                            UpdateVote(pgsql, vote.voter_id, vote.vote);
-                        }
+
+                        UpdateVote(pgsql, vote.voter_id, vote.vote);
                     }
                     else
                     {
-                        keepAliveCommand.ExecuteNonQuery();
+                        KeepAlive(pgsql);
                     }
                 }
             }
@@ -65,6 +68,15 @@ namespace Worker
                 return 1;
             }
         }
+
+        private static string GetEnv(string name, string defaultValue)
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
+        }
+
+        private static bool IsValidVote(string vote)
+            => vote == "a" || vote == "b";
 
         private static NpgsqlConnection OpenDbConnection(string connectionString)
         {
@@ -129,6 +141,15 @@ namespace Worker
                 .AddressList
                 .First(a => a.AddressFamily == AddressFamily.InterNetwork)
                 .ToString();
+
+        private static void KeepAlive(NpgsqlConnection connection)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT 1";
+                command.ExecuteNonQuery();
+            }
+        }
 
         private static void UpdateVote(NpgsqlConnection connection, string voterId, string vote)
         {
