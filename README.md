@@ -46,6 +46,45 @@ To remove them, run:
 kubectl delete -f k8s-specifications/
 ```
 
+## Kubernetes NetworkPolicies
+
+The backend NetworkPolicies limit ingress to the database pods without changing application code or the existing Services:
+
+- PostgreSQL pods (`app: db`) accept TCP `5432` only from worker (`app: worker`) and result (`app: result`) pods.
+- Redis pods (`app: redis`) accept TCP `6379` only from vote (`app: vote`) and worker (`app: worker`) pods.
+
+The policies use pod selectors only, so their source selectors apply within the namespace where the manifests are installed. They restrict only ingress to the selected backend pods; unrelated application traffic is not affected.
+
+Apply or remove the policies:
+
+```shell
+kubectl apply -f k8s-specifications/db-network-policy.yaml
+kubectl apply -f k8s-specifications/redis-network-policy.yaml
+
+kubectl delete -f k8s-specifications/db-network-policy.yaml
+kubectl delete -f k8s-specifications/redis-network-policy.yaml
+```
+
+Inspect them with:
+
+```shell
+kubectl get networkpolicies
+kubectl describe networkpolicy allow-postgres-from-worker-and-result
+kubectl describe networkpolicy allow-redis-from-vote-and-worker
+```
+
+To test enforcement, run temporary pods in the same namespace. An authorized source label should be able to open the matching backend port, while an unrecognized label should time out or be refused when the policy is enforced:
+
+```shell
+kubectl run redis-authorized --rm -it --restart=Never --image=busybox:1.36 --labels=app=vote -- sh -c 'nc -zvw 5 redis 6379'
+kubectl run redis-unauthorized --rm -it --restart=Never --image=busybox:1.36 --labels=app=untrusted -- sh -c 'nc -zvw 5 redis 6379'
+
+kubectl run db-authorized --rm -it --restart=Never --image=busybox:1.36 --labels=app=result -- sh -c 'nc -zvw 5 db 5432'
+kubectl run db-unauthorized --rm -it --restart=Never --image=busybox:1.36 --labels=app=untrusted -- sh -c 'nc -zvw 5 db 5432'
+```
+
+NetworkPolicies take effect only with a CNI plugin that enforces them (for example, Calico or Cilium). Clusters without NetworkPolicy enforcement will accept the unauthorized connections despite these manifests.
+
 ## Architecture
 
 ![Architecture diagram](architecture.excalidraw.png)
