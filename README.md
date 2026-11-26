@@ -16,6 +16,20 @@ docker compose up
 
 The `vote` app will be running at [http://localhost:8080](http://localhost:8080), and the `results` will be at [http://localhost:8081](http://localhost:8081).
 
+## Voting App Tests
+
+The voting-app tests cover the homepage, secure voter cookie attributes, vote
+validation and Redis payloads, the health endpoint, and safe rendering of
+malicious-looking option labels. Safe JavaScript serialization prevents option
+labels containing quotes or HTML from being interpreted as executable markup.
+Redis is mocked in the tests, so no running Redis server or other live
+infrastructure is required.
+
+```bash
+python -m pip install -r vote/requirements.txt
+python -m unittest discover -s vote/tests -v
+```
+
 Alternately, if you want to run it on a [Docker Swarm](https://docs.docker.com/engine/swarm/), first make sure you have a swarm. If you don't, run:
 
 ```shell
@@ -102,3 +116,4 @@ The voting application only accepts one vote per client browser. It does not reg
 This isn't an example of a properly architected perfectly designed distributed app... it's just a simple
 example of the various types of pieces and languages you might see (queues, persistent data, etc), and how to
 deal with them in Docker at a basic level.
+
