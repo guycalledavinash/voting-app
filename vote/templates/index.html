@@ -42,16 +42,16 @@
     {% if vote %}
     <script>
         $(document).ready(function() {
-            const userVote = "{{ vote }}";
-            const optionA = "{{ option_a }}";
-            const optionB = "{{ option_b }}";
+            const userVote = {{ vote|tojson }};
+            const optionA = {{ option_a|tojson }};
+            const optionB = {{ option_b|tojson }};
             const checkIcon = ' <i class="fa fa-check-circle"></i>';
 
             if (userVote === "a") {
-                $("#a").prop('disabled', true).html(optionA + checkIcon);
+                $("#a").prop('disabled', true).text(optionA).append(checkIcon);
                 $("#b").css('opacity', '0.5');
             } else if (userVote === "b") {
-                $("#b").prop('disabled', true).html(optionB + checkIcon);
+                $("#b").prop('disabled', true).text(optionB).append(checkIcon);
                 $("#a").css('opacity', '0.5');
             }
         });
@@ -59,3 +59,4 @@
     {% endif %}
 </body>
 </html>
+
